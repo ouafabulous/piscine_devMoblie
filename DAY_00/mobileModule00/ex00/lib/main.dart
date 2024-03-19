@@ -1,9 +1,19 @@
 import 'package:flutter/material.dart';
 
 void main() {
-  runApp(MaterialApp(
+  runApp(const MaterialApp(
     home: Scaffold(
-      body: Center(
+      body: MainBody()
+    ),
+  ));
+}
+
+class MainBody extends StatelessWidget {
+  const MainBody({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         const Text(
           'Hello, World2!',
@@ -11,10 +21,11 @@ void main() {
         ),
         TextButton(
           onPressed: () => print('Button clicked!'),
-          child: const Text('Click me!'),
           style: ButtonStyle(backgroundColor: MaterialStateProperty.all(Colors.purple)),
+          child: const Text('Click me!'),
         )
-      ])),
-    ),
-  ));
+      ]));
+  }
+
+
 }
