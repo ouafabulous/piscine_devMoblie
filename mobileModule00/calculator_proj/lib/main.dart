@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:math_expressions/math_expressions.dart';
 
 void main() {
   runApp(const Calculator());
@@ -16,13 +17,65 @@ class _CalculatorState extends State<Calculator> {
     super.initState();
   }
 
-  double _result = 0;
-  double _expression = 0;
+  String _result = '0';
+  String _expression = "0";
 
   void calculate() {
     setState(() {
-      _result = _expression;
-      _expression = 0;
+      Parser p = Parser();
+      try {
+        Expression exp = p.parse(_expression);
+        ContextModel cm = ContextModel();
+        double eval = exp.evaluate(EvaluationType.REAL, cm);
+        _result = eval.toString();
+        return;
+      } catch (e) {
+        print(e);
+        _result = "ERROR";
+      }
+    });
+  }
+
+  void updateExpression(String input) {
+    setState(() {
+      if (input == "C") {
+        if (_expression.length == 1) {
+          _expression = "0";
+          return;
+        }
+        _expression = _expression.substring(0, _expression.length - 1);
+        return;
+      }
+      if (input == "AC") {
+        _expression = "0";
+        _result = '0';
+        return;
+      }
+      if (input == "00") {
+        if (_expression == "0") {
+          return;
+        }
+        _expression += "00";
+        return;
+      }
+      if (input == "=") {
+        calculate();
+        return;
+      }
+      if (_expression == "0" && input != "0") {
+        _expression = input;
+        return;
+      }
+      if (_expression == "0" && input == "0") {
+        return;
+      }
+
+      if (_expression == "0") {
+        _expression = input;
+        return;
+      }
+
+      _expression += input;
     });
   }
 
@@ -40,17 +93,18 @@ class _CalculatorState extends State<Calculator> {
                 Expanded(
                   child: CalcScreen(result: _result, expression: _expression),
                 ),
-                const CalcKeyboard(),
+                CalcKeyboard(
+                    calculate: calculate, updateExpression: updateExpression),
               ],
             )));
   }
 }
 
 class CalcScreen extends StatelessWidget {
-  var result;
-  var expression;
+  final String result;
+  final String expression;
 
-  CalcScreen({super.key, required this.result, required this.expression});
+  const CalcScreen({super.key, required this.result, required this.expression});
 
   @override
   Widget build(BuildContext context) {
@@ -96,7 +150,11 @@ class CalcScreen extends StatelessWidget {
 }
 
 class CalcKeyboard extends StatelessWidget {
-  const CalcKeyboard({super.key});
+  final Function calculate;
+  final Function updateExpression;
+
+  const CalcKeyboard(
+      {super.key, required this.calculate, required this.updateExpression});
 
   @override
   Widget build(BuildContext context) {
@@ -120,28 +178,34 @@ class CalcKeyboard extends StatelessWidget {
 
   Widget createButton(String buttonText) {
     // Consistent padding for all buttons.
-    return Flexible(
-      child: ElevatedButton(
-        onPressed: () {
-          // equation += buttonText;
-        },
-        style: ElevatedButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+    return Column(children: [
+      Flexible(
+        child: ElevatedButton(
+          onPressed: () {
+            if (buttonText == '=') {
+              calculate();
+            } else {
+              updateExpression(buttonText);
+            }
+          },
+          style: ElevatedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            // Let the button expand to fill the space instead of setting a minimum size
           ),
-          // Let the button expand to fill the space instead of setting a minimum size
-        ),
-        child: FittedBox(
-          // To adjust text size automatically
-          fit: BoxFit.scaleDown,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-                vertical: 1, horizontal: 1), // Adjust inner padding if needed
-            child: Text(buttonText),
+          child: FittedBox(
+            // To adjust text size automatically
+            fit: BoxFit.scaleDown,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                  vertical: 1, horizontal: 1), // Adjust inner padding if needed
+              child: Text(buttonText),
+            ),
           ),
         ),
-      ),
-    );
+      )
+    ]);
   }
 
   String getButtonLabel(int index) {

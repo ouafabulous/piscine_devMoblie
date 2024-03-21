@@ -96,29 +96,30 @@ class CalcKeyboard extends StatelessWidget {
 
   Widget createButton(String buttonText) {
     // Consistent padding for all buttons.
-    return Flexible(
-      child: ElevatedButton(
-        onPressed: () {
-          print('Button pressed: $buttonText');
-        },
-        style: ElevatedButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+    return Row(children: [
+      Flexible(
+        child: ElevatedButton(
+          onPressed: () {
+            print('Button pressed: $buttonText');
+          },
+          style: ElevatedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            // Let the button expand to fill the space instead of setting a minimum size
           ),
-          // Let the button expand to fill the space instead of setting a minimum size
-        ),
-        child: FittedBox(
-          // To adjust text size automatically
-          fit: BoxFit.scaleDown,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-                vertical: 1,
-                horizontal: 1), // Adjust inner padding if needed
-            child: Text(buttonText),
+          child: FittedBox(
+            // To adjust text size automatically
+            fit: BoxFit.scaleDown,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                  vertical: 1, horizontal: 1), // Adjust inner padding if needed
+              child: Text(buttonText),
+            ),
           ),
         ),
-      ),
-    );
+      )
+    ]);
   }
 
   String getButtonLabel(int index) {
