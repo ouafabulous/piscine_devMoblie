@@ -16,11 +16,11 @@ class MainBody extends StatelessWidget {
     return Center(
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         const Text(
-          'Hello, World2!',
+          'Hello, World!',
           style: TextStyle(backgroundColor: Colors.purple),
         ),
         TextButton(
-          onPressed: () => print('Button clicked!'),
+          onPressed: () => print('Button pressed'),
           style: ButtonStyle(backgroundColor: MaterialStateProperty.all(Colors.purple)),
           child: const Text('Click me!'),
         )
