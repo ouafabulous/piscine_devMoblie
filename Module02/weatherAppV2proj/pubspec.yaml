@@ -10,6 +10,7 @@ dependencies:
   dropdown_textfield: ^1.0.8
   flutter:
     sdk: flutter
+  geocode: ^1.0.3
   http: ^1.2.1
   location: ^4.3.0
 

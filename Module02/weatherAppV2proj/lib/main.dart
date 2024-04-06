@@ -1,7 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:location/location.dart';
+import 'package:geocode/geocode.dart';
+import 'package:location/location.dart' as loc;
 import 'package:http/http.dart' as http;
 
 void main() => runApp(const MainApp());
@@ -46,7 +47,7 @@ class LocData {
         latitude: json['latitude'],
         longitude: json['longitude'],
         name: json['name'],
-        region: json['region'],
+        region: json['admin1'],
         country: json['country']);
   }
 }
@@ -56,25 +57,29 @@ Future<List<LocData>> getSearchResults(String query) async {
     return [];
   }
 
-  var url = Uri.parse("https://geocoding-api.open-meteo.com/v1/search?name=$query");
-  print(url);
-  var response = await http.get(url);
+  try {
+    var url =
+        Uri.parse("https://geocoding-api.open-meteo.com/v1/search?name=$query");
+    var response = await http.get(url);
 
-  print(response.body);
-  if (response.statusCode == 200) {
-    List<LocData> locations = [];
-    var data = response.body;
-    var jsonData = jsonDecode(data);
+    if (response.statusCode == 200) {
+      List<LocData> locations = [];
+      var data = response.body;
+      var jsonData = json.decode(data);
 
-    // Assuming the locations are within a "results" array in the JSON response
-    for (var item in jsonData['results']) {
-      LocData location = LocData.fromJson(item);
-      locations.add(location);
+      final Map map = Map.from(jsonData);
+
+      for (var item in map['results']) {
+        LocData location = LocData.fromJson(item);
+        locations.add(location);
+      }
+      return locations;
+    } else {
+      throw Exception('Failed to load data');
     }
-
-    return locations;
-  } else {
-    throw Exception('Failed to load data');
+  } catch (e) {
+    print("Error: $e");
+    return [];
   }
 }
 
@@ -106,7 +111,8 @@ class _HomePageState extends State<HomePage> {
                 }
                 return await getSearchResults(textEditingValue.text);
               },
-              displayStringForOption: (LocData option) => option.name,
+              displayStringForOption: (LocData option) =>
+                  "${option.name}, ${option.region}, ${option.country}",
               fieldViewBuilder: (BuildContext context,
                   TextEditingController textEditingController,
                   FocusNode focusNode,
@@ -116,7 +122,8 @@ class _HomePageState extends State<HomePage> {
                     focusNode: focusNode,
                     decoration: const InputDecoration(
                       hintText: 'Search location',
-                    ));
+                    ),
+                    onSubmitted: (value) => updateLocation(value));
               },
               onSelected: (LocData selection) {
                 updateLocation(selection.name);
@@ -132,9 +139,16 @@ class _HomePageState extends State<HomePage> {
                         {
                           LocationService()
                               .getCurrentLocation()
-                              .then((locationData) {
-                            updateLocation(
-                                "${locationData.latitude}, ${locationData.longitude}");
+                              .then((locationData) async {
+                            try {
+                              var address = await GeoCode().reverseGeocoding(
+                                  latitude: locationData.latitude ?? 0.0,
+                                  longitude: locationData.longitude ?? 0.0);
+                              updateLocation(address.city ?? "Unknown");
+                            } catch (e) {
+                              // Handle exceptions that could come from placemarkFromCoordinates
+                              print('Failed to get placemarks: $e');
+                            }
                             return;
                           })
                         }
@@ -204,14 +218,14 @@ class Views extends StatelessWidget {
 }
 
 class LocationService {
-  Location location = Location();
+  loc.Location location = loc.Location();
 
   Future<bool> requestPermission() async {
     final permission = await location.requestPermission();
-    return permission == PermissionStatus.granted;
+    return permission == loc.PermissionStatus.granted;
   }
 
-  Future<LocationData> getCurrentLocation() async {
+  Future<loc.LocationData> getCurrentLocation() async {
     final serviceEnabled = await location.serviceEnabled();
     if (!serviceEnabled) {
       final result = await location.requestService;
