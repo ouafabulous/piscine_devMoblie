@@ -44,11 +44,28 @@ class LocData {
 
   factory LocData.fromJson(Map<String, dynamic> json) {
     return LocData(
-        latitude: json['latitude'],
-        longitude: json['longitude'],
-        name: json['name'],
-        region: json['admin1'],
-        country: json['country']);
+        latitude: json['latitude'] ?? 0.0,
+        longitude: json['longitude'] ?? 0.0,
+        name: json['name'] ?? "Unknown",
+        region: json['admin1'] ?? "",
+        country: json['country'] ?? "");
+  }
+}
+
+class CurrentWeatherData {
+  double temperature;
+  double windSpeed;
+
+  CurrentWeatherData({required this.temperature, required this.windSpeed});
+
+  factory CurrentWeatherData.fromJson(Map<String, dynamic> json) {
+    return CurrentWeatherData(
+        temperature: json['temperature_2m'], windSpeed: json['wind_speed_10m']);
+  }
+
+  @override
+  String toString() {
+    return 'CurrentWeatherData{temperature: $temperature, windSpeed: $windSpeed}';
   }
 }
 
@@ -78,19 +95,51 @@ Future<List<LocData>> getSearchResults(String query) async {
       throw Exception('Failed to load data');
     }
   } catch (e) {
-    print("Error: $e");
     return [];
   }
 }
 
+Future<CurrentWeatherData> getWeatherData(LocData locData) async {
+  try {
+    var url = Uri.parse(
+        "https://api.open-meteo.com/v1/forecast?latitude=${locData.latitude}&longitude=${locData.longitude}&current=temperature_2m,weather_code,wind_speed_10m");
+    var response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      var data = response.body;
+      var jsonData = json.decode(data);
+      return CurrentWeatherData.fromJson(jsonData['current']);
+    } else {
+      throw Exception('Failed to load data');
+    }
+  } catch (e) {
+    print("Error: $e");
+    return CurrentWeatherData(temperature: 0.0, windSpeed: 0.0);
+  }
+}
+
 class _HomePageState extends State<HomePage> {
-  var location = "";
+  var location = LocData(
+      latitude: 0.0, longitude: 0.0, name: "Unknown", region: "", country: "");
+  var currentWeather = CurrentWeatherData(temperature: 0.0, windSpeed: 0.0);
   final TextEditingController _textEditingController = TextEditingController();
 
-  void updateLocation(String value) {
+  void updateLocation(LocData value) {
     setState(() {
-      location = value;
+      location = LocData(
+          latitude: value.latitude,
+          longitude: value.longitude,
+          name: value.name,
+          region: value.region,
+          country: value.country);
       _textEditingController.clear(); // Clear the text field
+    });
+  }
+
+  void updateCurrentWeather(CurrentWeatherData val) {
+    setState(() {
+      currentWeather = CurrentWeatherData(
+          temperature: val.temperature, windSpeed: val.windSpeed);
     });
   }
 
@@ -123,10 +172,35 @@ class _HomePageState extends State<HomePage> {
                     decoration: const InputDecoration(
                       hintText: 'Search location',
                     ),
-                    onSubmitted: (value) => updateLocation(value));
+                    onSubmitted: (value) async {
+                      try {
+                        var address =
+                            await GeoCode().forwardGeocoding(address: value);
+                        if (address != null) {
+                          var newAddress = await GeoCode().reverseGeocoding(
+                              latitude: address.latitude ?? 0.0,
+                              longitude: address.longitude ?? 0.0);
+
+                          updateLocation(LocData(
+                              latitude: address.latitude ?? 0.0,
+                              longitude: address.longitude ?? 0.0,
+                              name: newAddress.city ?? "Unknown",
+                              region: newAddress.region ?? "",
+                              country: newAddress.countryName ?? ""));
+
+                          var weatherData = await getWeatherData(location);
+                          updateCurrentWeather(weatherData);
+                        }
+                      } catch (e) {
+                        print(
+                            'Failed to process the address or get weather data: $e');
+                      }
+                    });
               },
               onSelected: (LocData selection) {
-                updateLocation(selection.name);
+                updateLocation(selection);
+                getWeatherData(location)
+                    .then((value) => updateCurrentWeather(value));
               },
             ),
           ),
@@ -140,11 +214,22 @@ class _HomePageState extends State<HomePage> {
                           LocationService()
                               .getCurrentLocation()
                               .then((locationData) async {
+                            var lat = locationData.latitude ??
+                                0.0; // Default to 0.0 if null
+                            var lon = locationData.longitude ??
+                                0.0; // Default to 0.0 if null
                             try {
                               var address = await GeoCode().reverseGeocoding(
-                                  latitude: locationData.latitude ?? 0.0,
-                                  longitude: locationData.longitude ?? 0.0);
-                              updateLocation(address.city ?? "Unknown");
+                                  latitude: lat, longitude: lon);
+                              updateLocation(LocData(
+                                  latitude: lat,
+                                  longitude: lon,
+                                  name: address.city ?? "Unknown",
+                                  region: address.region ?? "",
+                                  country: address.countryName ?? ""));
+                              // updateLocation(address.city ?? "Unknown");
+                              getWeatherData(location)
+                                  .then((value) => updateCurrentWeather(value));
                             } catch (e) {
                               // Handle exceptions that could come from placemarkFromCoordinates
                               print('Failed to get placemarks: $e');
@@ -153,14 +238,19 @@ class _HomePageState extends State<HomePage> {
                           })
                         }
                     });
-                updateLocation("Geolocation");
+                updateLocation(LocData(
+                    latitude: 0.0,
+                    longitude: 0.0,
+                    name: "Unknow",
+                    region: "",
+                    country: ""));
               },
             ),
           ],
           leading: const Icon(Icons.search),
         ),
         bottomNavigationBar: const BottomBar(),
-        body: Views(location: location),
+        body: Views(location: location, currentWeather: currentWeather),
       ),
     );
   }
@@ -191,16 +281,21 @@ class BottomBar extends StatelessWidget {
 }
 
 class Views extends StatelessWidget {
-  final String location;
+  final LocData location;
+  final CurrentWeatherData currentWeather;
 
-  const Views({super.key, required this.location});
+  const Views(
+      {super.key, required this.location, required this.currentWeather});
 
-  Widget displayView(String label) {
+  Widget displayView() {
     return Center(
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Text(label),
-        Text(location,
-            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold))
+        Text(location.name,
+            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold)),
+        Text(location.region),
+        Text(location.country),
+        Text("${currentWeather.temperature.toString()}°C"),
+        Text("${currentWeather.windSpeed.toString()} km/h"),
       ]),
     );
   }
@@ -209,9 +304,9 @@ class Views extends StatelessWidget {
   Widget build(BuildContext context) {
     return TabBarView(
       children: <Widget>[
-        displayView("Currently"),
-        displayView("Today"),
-        displayView("Weekly"),
+        displayView(),
+        displayView(),
+        displayView(),
       ],
     );
   }
@@ -239,3 +334,34 @@ class LocationService {
     return locationData;
   }
 }
+
+const Map<int, String> weatherCodes = {
+  0: 'Clear sky',
+  1: 'Mainly clear',
+  2: 'Partly cloudy',
+  3: 'Overcast',
+  45: 'Fog',
+  48: 'Depositing rime fog',
+  51: 'Drizzle: Light',
+  53: 'Drizzle: Moderate',
+  55: 'Drizzle: Dense intensity',
+  56: 'Freezing Drizzle: Light',
+  57: 'Freezing Drizzle: Dense intensity',
+  61: 'Rain: Slight',
+  63: 'Rain: Moderate',
+  65: 'Rain: Heavy intensity',
+  66: 'Freezing Rain: Light',
+  67: 'Freezing Rain: Heavy intensity',
+  71: 'Snow fall: Slight',
+  73: 'Snow fall: Moderate',
+  75: 'Snow fall: Heavy intensity',
+  77: 'Snow grains',
+  80: 'Rain showers: Slight',
+  81: 'Rain showers: Moderate',
+  82: 'Rain showers: Violent',
+  85: 'Snow showers slight',
+  86: 'Snow showers heavy',
+  95: 'Thunderstorm: Slight or moderate',
+  96: 'Thunderstorm with slight hail',
+  99: 'Thunderstorm with heavy hail'
+};
