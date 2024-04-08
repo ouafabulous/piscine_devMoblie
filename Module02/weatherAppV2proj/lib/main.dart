@@ -5,6 +5,9 @@ import 'package:geocode/geocode.dart';
 import 'package:location/location.dart' as loc;
 import 'package:http/http.dart' as http;
 
+import 'types.dart';
+import 'views.dart';
+
 void main() => runApp(const MainApp());
 
 class MainApp extends StatelessWidget {
@@ -28,46 +31,6 @@ class HomePage extends StatefulWidget {
   _HomePageState createState() => _HomePageState();
 }
 
-class LocData {
-  double latitude;
-  double longitude;
-  String name;
-  String region;
-  String country;
-
-  LocData(
-      {required this.latitude,
-      required this.longitude,
-      required this.name,
-      required this.region,
-      required this.country});
-
-  factory LocData.fromJson(Map<String, dynamic> json) {
-    return LocData(
-        latitude: json['latitude'] ?? 0.0,
-        longitude: json['longitude'] ?? 0.0,
-        name: json['name'] ?? "Unknown",
-        region: json['admin1'] ?? "",
-        country: json['country'] ?? "");
-  }
-}
-
-class CurrentWeatherData {
-  double temperature;
-  double windSpeed;
-
-  CurrentWeatherData({required this.temperature, required this.windSpeed});
-
-  factory CurrentWeatherData.fromJson(Map<String, dynamic> json) {
-    return CurrentWeatherData(
-        temperature: json['temperature_2m'], windSpeed: json['wind_speed_10m']);
-  }
-
-  @override
-  String toString() {
-    return 'CurrentWeatherData{temperature: $temperature, windSpeed: $windSpeed}';
-  }
-}
 
 Future<List<LocData>> getSearchResults(String query) async {
   if (query.length < 2) {
@@ -99,7 +62,7 @@ Future<List<LocData>> getSearchResults(String query) async {
   }
 }
 
-Future<CurrentWeatherData> getWeatherData(LocData locData) async {
+Future<CurrentWeatherData> getCurrentWeatherData(LocData locData) async {
   try {
     var url = Uri.parse(
         "https://api.open-meteo.com/v1/forecast?latitude=${locData.latitude}&longitude=${locData.longitude}&current=temperature_2m,weather_code,wind_speed_10m");
@@ -118,10 +81,53 @@ Future<CurrentWeatherData> getWeatherData(LocData locData) async {
   }
 }
 
+Future<TodayWeatherData> getTodayWeatherData(LocData locData) async {
+  try {
+    var url = Uri.parse(
+        "https://api.open-meteo.com/v1/forecast?latitude=${locData.latitude}&longitude=${locData.longitude}&hourly=temperature_2m,wind_speed_10m&forecast_days=1");
+    var response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      var data = response.body;
+      var jsonData = json.decode(data);
+      return TodayWeatherData.fromJson(jsonData['hourly']);
+    } else {
+      throw Exception('Failed to load data');
+    }
+  } catch (e) {
+    print("Error: $e");
+    return TodayWeatherData(timestamps: [], temperatures: [], windSpeeds: []);
+  }
+}
+
+Future<WeeklyWeatherData> getWeeklyWeatherData(LocData locData) async {
+  try {
+    var url = Uri.parse(
+        "https://api.open-meteo.com/v1/forecast?latitude=${locData.latitude}&longitude=${locData.longitude}&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto");
+    var response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      var data = response.body;
+      var jsonData = json.decode(data);
+      return WeeklyWeatherData.fromJson(jsonData['daily']);
+    } else {
+      throw Exception('Failed to load data');
+    }
+  } catch (e) {
+    print("Error: $e");
+    return WeeklyWeatherData(
+        timestamps: [], minTemperatures: [], maxTemperatures: [], weatherCodes: []);
+  }
+}
+
 class _HomePageState extends State<HomePage> {
   var location = LocData(
       latitude: 0.0, longitude: 0.0, name: "Unknown", region: "", country: "");
   var currentWeather = CurrentWeatherData(temperature: 0.0, windSpeed: 0.0);
+  var todayWeather =
+      TodayWeatherData(timestamps: [], temperatures: [], windSpeeds: []);
+  var weeklyWeather = WeeklyWeatherData(
+      timestamps: [], minTemperatures: [], maxTemperatures: [], weatherCodes: []);
   final TextEditingController _textEditingController = TextEditingController();
 
   void updateLocation(LocData value) {
@@ -143,10 +149,29 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  void updateTodayWeather(TodayWeatherData val) {
+    setState(() {
+      todayWeather = TodayWeatherData(
+          timestamps: val.timestamps,
+          temperatures: val.temperatures,
+          windSpeeds: val.windSpeeds);
+    });
+  }
+
+  void updateWeeklyWeather(WeeklyWeatherData val) {
+    setState(() {
+      weeklyWeather = WeeklyWeatherData(
+          timestamps: val.timestamps,
+          minTemperatures: val.minTemperatures,
+          maxTemperatures: val.maxTemperatures,
+          weatherCodes: val.weatherCodes);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      initialIndex: 1,
+      initialIndex: 0,
       length: 3,
       child: Scaffold(
         appBar: AppBar(
@@ -176,6 +201,7 @@ class _HomePageState extends State<HomePage> {
                       try {
                         var address =
                             await GeoCode().forwardGeocoding(address: value);
+                        // ignore: unnecessary_null_comparison
                         if (address != null) {
                           var newAddress = await GeoCode().reverseGeocoding(
                               latitude: address.latitude ?? 0.0,
@@ -188,8 +214,15 @@ class _HomePageState extends State<HomePage> {
                               region: newAddress.region ?? "",
                               country: newAddress.countryName ?? ""));
 
-                          var weatherData = await getWeatherData(location);
-                          updateCurrentWeather(weatherData);
+                          var currentWeatherData =
+                              await getCurrentWeatherData(location);
+                          var todayWeatherData =
+                              await getTodayWeatherData(location);
+                          var weeklyWeatherData =
+                              await getWeeklyWeatherData(location);
+                          updateCurrentWeather(currentWeatherData);
+                          updateTodayWeather(todayWeatherData);
+                          updateWeeklyWeather(weeklyWeatherData);
                         }
                       } catch (e) {
                         print(
@@ -199,8 +232,12 @@ class _HomePageState extends State<HomePage> {
               },
               onSelected: (LocData selection) {
                 updateLocation(selection);
-                getWeatherData(location)
+                getCurrentWeatherData(location)
                     .then((value) => updateCurrentWeather(value));
+                getTodayWeatherData(location)
+                    .then((value) => updateTodayWeather(value));
+                getWeeklyWeatherData(location)
+                    .then((value) => updateWeeklyWeather(value));
               },
             ),
           ),
@@ -228,8 +265,12 @@ class _HomePageState extends State<HomePage> {
                                   region: address.region ?? "",
                                   country: address.countryName ?? ""));
                               // updateLocation(address.city ?? "Unknown");
-                              getWeatherData(location)
+                              getCurrentWeatherData(location)
                                   .then((value) => updateCurrentWeather(value));
+                              getTodayWeatherData(location)
+                                  .then((value) => updateTodayWeather(value));
+                              getWeeklyWeatherData(location)
+                                  .then((value) => updateWeeklyWeather(value));
                             } catch (e) {
                               // Handle exceptions that could come from placemarkFromCoordinates
                               print('Failed to get placemarks: $e');
@@ -250,7 +291,12 @@ class _HomePageState extends State<HomePage> {
           leading: const Icon(Icons.search),
         ),
         bottomNavigationBar: const BottomBar(),
-        body: Views(location: location, currentWeather: currentWeather),
+        body: Views(
+            location: location,
+            currentWeather: currentWeather,
+            todayWeather: todayWeather,
+            weeklyWeather: weeklyWeather
+            ),
       ),
     );
   }
@@ -280,38 +326,6 @@ class BottomBar extends StatelessWidget {
   }
 }
 
-class Views extends StatelessWidget {
-  final LocData location;
-  final CurrentWeatherData currentWeather;
-
-  const Views(
-      {super.key, required this.location, required this.currentWeather});
-
-  Widget displayView() {
-    return Center(
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Text(location.name,
-            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold)),
-        Text(location.region),
-        Text(location.country),
-        Text("${currentWeather.temperature.toString()}°C"),
-        Text("${currentWeather.windSpeed.toString()} km/h"),
-      ]),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return TabBarView(
-      children: <Widget>[
-        displayView(),
-        displayView(),
-        displayView(),
-      ],
-    );
-  }
-}
-
 class LocationService {
   loc.Location location = loc.Location();
 
@@ -323,7 +337,9 @@ class LocationService {
   Future<loc.LocationData> getCurrentLocation() async {
     final serviceEnabled = await location.serviceEnabled();
     if (!serviceEnabled) {
+      // ignore: await_only_futures
       final result = await location.requestService;
+      // ignore: unrelated_type_equality_checks
       if (result == true) {
         print('Service has been enabled');
       } else {
@@ -334,34 +350,3 @@ class LocationService {
     return locationData;
   }
 }
-
-const Map<int, String> weatherCodes = {
-  0: 'Clear sky',
-  1: 'Mainly clear',
-  2: 'Partly cloudy',
-  3: 'Overcast',
-  45: 'Fog',
-  48: 'Depositing rime fog',
-  51: 'Drizzle: Light',
-  53: 'Drizzle: Moderate',
-  55: 'Drizzle: Dense intensity',
-  56: 'Freezing Drizzle: Light',
-  57: 'Freezing Drizzle: Dense intensity',
-  61: 'Rain: Slight',
-  63: 'Rain: Moderate',
-  65: 'Rain: Heavy intensity',
-  66: 'Freezing Rain: Light',
-  67: 'Freezing Rain: Heavy intensity',
-  71: 'Snow fall: Slight',
-  73: 'Snow fall: Moderate',
-  75: 'Snow fall: Heavy intensity',
-  77: 'Snow grains',
-  80: 'Rain showers: Slight',
-  81: 'Rain showers: Moderate',
-  82: 'Rain showers: Violent',
-  85: 'Snow showers slight',
-  86: 'Snow showers heavy',
-  95: 'Thunderstorm: Slight or moderate',
-  96: 'Thunderstorm with slight hail',
-  99: 'Thunderstorm with heavy hail'
-};
