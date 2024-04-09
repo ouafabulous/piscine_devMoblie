@@ -1,3 +1,19 @@
+class ErrorMessages {
+  
+  static String getGeolocationNotEnabledError() {
+    return "Geolocation is not enabled, please enable it in your App settings";
+  }
+  
+  static String getAddressNotFoundError() {
+    return "Could not find any result for the supplied address or coordinates";
+  }
+
+  static String getServiceLostError() {
+    return "The service connection is lost, please check your internet connection or try again";
+  }
+}
+
+
 class LocData {
   double latitude;
   double longitude;
@@ -29,8 +45,9 @@ class CurrentWeatherData {
   CurrentWeatherData({required this.temperature, required this.windSpeed});
 
   factory CurrentWeatherData.fromJson(Map<String, dynamic> json) {
-    return CurrentWeatherData(
+    var cd = CurrentWeatherData(
         temperature: json['temperature_2m'], windSpeed: json['wind_speed_10m']);
+  return cd;
   }
 
   @override
@@ -43,11 +60,13 @@ class TodayWeatherData {
   List<String> timestamps;
   List<dynamic> temperatures;
   List<dynamic> windSpeeds;
+  List<dynamic> weatherCodes;
 
   TodayWeatherData({
     required this.timestamps,
     required this.temperatures,
     required this.windSpeeds,
+    required this.weatherCodes,
   });
 
   factory TodayWeatherData.fromJson(Map<String, dynamic> json) {
@@ -65,10 +84,13 @@ class TodayWeatherData {
         .map((e) => e.toDouble())
         .toList();
 
+    var weatherCodes = (json['weather_code'] as List<dynamic>);
+
     return TodayWeatherData(
       timestamps: timestamps,
       temperatures: temperatures,
       windSpeeds: windSpeeds,
+      weatherCodes: weatherCodes,
     );
   }
 

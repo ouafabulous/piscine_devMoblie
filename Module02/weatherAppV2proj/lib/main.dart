@@ -31,7 +31,6 @@ class HomePage extends StatefulWidget {
   _HomePageState createState() => _HomePageState();
 }
 
-
 Future<List<LocData>> getSearchResults(String query) async {
   if (query.length < 2) {
     return [];
@@ -84,7 +83,7 @@ Future<CurrentWeatherData> getCurrentWeatherData(LocData locData) async {
 Future<TodayWeatherData> getTodayWeatherData(LocData locData) async {
   try {
     var url = Uri.parse(
-        "https://api.open-meteo.com/v1/forecast?latitude=${locData.latitude}&longitude=${locData.longitude}&hourly=temperature_2m,wind_speed_10m&forecast_days=1");
+        "https://api.open-meteo.com/v1/forecast?latitude=${locData.latitude}&longitude=${locData.longitude}&hourly=weather_code,temperature_2m,wind_speed_10m&forecast_days=1");
     var response = await http.get(url);
 
     if (response.statusCode == 200) {
@@ -96,7 +95,7 @@ Future<TodayWeatherData> getTodayWeatherData(LocData locData) async {
     }
   } catch (e) {
     print("Error: $e");
-    return TodayWeatherData(timestamps: [], temperatures: [], windSpeeds: []);
+    return TodayWeatherData(timestamps: [], temperatures: [], windSpeeds: [], weatherCodes: []);
   }
 }
 
@@ -116,7 +115,10 @@ Future<WeeklyWeatherData> getWeeklyWeatherData(LocData locData) async {
   } catch (e) {
     print("Error: $e");
     return WeeklyWeatherData(
-        timestamps: [], minTemperatures: [], maxTemperatures: [], weatherCodes: []);
+        timestamps: [],
+        minTemperatures: [],
+        maxTemperatures: [],
+        weatherCodes: []);
   }
 }
 
@@ -125,10 +127,14 @@ class _HomePageState extends State<HomePage> {
       latitude: 0.0, longitude: 0.0, name: "Unknown", region: "", country: "");
   var currentWeather = CurrentWeatherData(temperature: 0.0, windSpeed: 0.0);
   var todayWeather =
-      TodayWeatherData(timestamps: [], temperatures: [], windSpeeds: []);
+      TodayWeatherData(timestamps: [], temperatures: [], windSpeeds: [], weatherCodes: []);
   var weeklyWeather = WeeklyWeatherData(
-      timestamps: [], minTemperatures: [], maxTemperatures: [], weatherCodes: []);
+      timestamps: [],
+      minTemperatures: [],
+      maxTemperatures: [],
+      weatherCodes: []);
   final TextEditingController _textEditingController = TextEditingController();
+  String errorMessage = "";
 
   void updateLocation(LocData value) {
     setState(() {
@@ -154,7 +160,8 @@ class _HomePageState extends State<HomePage> {
       todayWeather = TodayWeatherData(
           timestamps: val.timestamps,
           temperatures: val.temperatures,
-          windSpeeds: val.windSpeeds);
+          windSpeeds: val.windSpeeds,
+          weatherCodes: val.weatherCodes);
     });
   }
 
@@ -165,6 +172,12 @@ class _HomePageState extends State<HomePage> {
           minTemperatures: val.minTemperatures,
           maxTemperatures: val.maxTemperatures,
           weatherCodes: val.weatherCodes);
+    });
+  }
+
+  void updateErrorMessage(String message) {
+    setState(() {
+      errorMessage = message;
     });
   }
 
@@ -201,19 +214,23 @@ class _HomePageState extends State<HomePage> {
                       try {
                         var address =
                             await GeoCode().forwardGeocoding(address: value);
-                        // ignore: unnecessary_null_comparison
                         if (address != null) {
                           var newAddress = await GeoCode().reverseGeocoding(
                               latitude: address.latitude ?? 0.0,
                               longitude: address.longitude ?? 0.0);
-
+                          if (newAddress.timezone == "Throttled! See geocode.xyz/pricing"){
+                            updateErrorMessage(ErrorMessages.getServiceLostError());
+                            return;
+                          }
                           updateLocation(LocData(
                               latitude: address.latitude ?? 0.0,
                               longitude: address.longitude ?? 0.0,
                               name: newAddress.city ?? "Unknown",
                               region: newAddress.region ?? "",
                               country: newAddress.countryName ?? ""));
-
+                          if (errorMessage.isNotEmpty) {
+                            updateErrorMessage("");
+                          }
                           var currentWeatherData =
                               await getCurrentWeatherData(location);
                           var todayWeatherData =
@@ -225,13 +242,16 @@ class _HomePageState extends State<HomePage> {
                           updateWeeklyWeather(weeklyWeatherData);
                         }
                       } catch (e) {
-                        print(
-                            'Failed to process the address or get weather data: $e');
+                        updateErrorMessage(
+                            ErrorMessages.getAddressNotFoundError());
                       }
                     });
               },
               onSelected: (LocData selection) {
                 updateLocation(selection);
+                if (errorMessage.isNotEmpty) {
+                  updateErrorMessage("");
+                }
                 getCurrentWeatherData(location)
                     .then((value) => updateCurrentWeather(value));
                 getTodayWeatherData(location)
@@ -264,7 +284,9 @@ class _HomePageState extends State<HomePage> {
                                   name: address.city ?? "Unknown",
                                   region: address.region ?? "",
                                   country: address.countryName ?? ""));
-                              // updateLocation(address.city ?? "Unknown");
+                              if (errorMessage.isNotEmpty) {
+                                updateErrorMessage("");
+                              }
                               getCurrentWeatherData(location)
                                   .then((value) => updateCurrentWeather(value));
                               getTodayWeatherData(location)
@@ -272,17 +294,21 @@ class _HomePageState extends State<HomePage> {
                               getWeeklyWeatherData(location)
                                   .then((value) => updateWeeklyWeather(value));
                             } catch (e) {
-                              // Handle exceptions that could come from placemarkFromCoordinates
                               print('Failed to get placemarks: $e');
                             }
                             return;
                           })
                         }
+                      else
+                        {
+                          updateErrorMessage(
+                              ErrorMessages.getGeolocationNotEnabledError())
+                        }
                     });
                 updateLocation(LocData(
                     latitude: 0.0,
                     longitude: 0.0,
-                    name: "Unknow",
+                    name: "Unknown",
                     region: "",
                     country: ""));
               },
@@ -292,11 +318,12 @@ class _HomePageState extends State<HomePage> {
         ),
         bottomNavigationBar: const BottomBar(),
         body: Views(
-            location: location,
-            currentWeather: currentWeather,
-            todayWeather: todayWeather,
-            weeklyWeather: weeklyWeather
-            ),
+          location: location,
+          currentWeather: currentWeather,
+          todayWeather: todayWeather,
+          weeklyWeather: weeklyWeather,
+          errorMessage: errorMessage,
+        ),
       ),
     );
   }
@@ -337,9 +364,7 @@ class LocationService {
   Future<loc.LocationData> getCurrentLocation() async {
     final serviceEnabled = await location.serviceEnabled();
     if (!serviceEnabled) {
-      // ignore: await_only_futures
       final result = await location.requestService;
-      // ignore: unrelated_type_equality_checks
       if (result == true) {
         print('Service has been enabled');
       } else {
